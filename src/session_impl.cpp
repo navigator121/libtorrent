@@ -480,12 +480,6 @@ namespace aux {
 		m_next_dht_torrent = m_torrents.begin();
 #endif
 		m_next_lsd_torrent = m_torrents.begin();
-		m_udp_mapping[0] = -1;
-		m_udp_mapping[1] = -1;
-#ifdef TORRENT_USE_OPENSSL
-		m_ssl_udp_mapping[0] = -1;
-		m_ssl_udp_mapping[1] = -1;
-#endif
 
 		m_global_class = m_classes.new_peer_class("global");
 		m_tcp_peer_class = m_classes.new_peer_class("tcp");
@@ -1843,6 +1837,7 @@ namespace aux {
 		return ret;
 	}
 
+	// TODO: 4 rename this function to indicate it's re-opening all listen sockets
 	void session_impl::open_listen_port()
 	{
 #ifndef TORRENT_DISABLE_LOGGING
@@ -1901,6 +1896,9 @@ retry:
 #else
 			const int first_family = 1;
 #endif
+			
+			// TODO: 4 Don't automatically bind to multiple address families.
+			// Instead make the default interfaces be 0.0.0.0:6881,[::]:6881
 			for (int address_family = first_family; address_family < 2; ++address_family)
 			{
 				error_code err;
@@ -1953,6 +1951,8 @@ retry:
 		}
 
 #ifdef TORRENT_USE_OPENSSL
+		// TODO: 4 remove ssl_listen setting. Instead, specify the port in the
+		// listen_interfaces to have an "s" suffix. Just like mongoose
 		int ssl_port = m_settings.get_int(settings_pack::ssl_listen);
 		udp::endpoint ssl_bind_if(first_successful.address(), ssl_port);
 
@@ -1969,7 +1969,7 @@ retry:
 #endif
 				ec.clear();
 			}
-			// TODO: 3 port map SSL udp socket here
+			// TODO: 4 port map SSL udp socket here
 		}
 #endif // TORRENT_USE_OPENSSL
 
@@ -1999,8 +1999,8 @@ retry:
 		else
 		{
 			m_external_udp_port = m_udp_socket.local_port();
-			maybe_update_udp_mapping(0, first_successful.port(), first_successful.port());
-			maybe_update_udp_mapping(1, first_successful.port(), first_successful.port());
+			// TODO: 4 map this UDP port with NAT-PMP and UPnP here. Look at
+			// maybe_update_udp_mapping for inspiration
 		}
 
 		// now, send out listen_succeeded_alert for the listen sockets we are
@@ -2072,14 +2072,14 @@ retry:
 	{
 		if ((mask & 1) && m_natpmp)
 		{
-			if (s.port_mapping[0] != -1) m_natpmp->delete_mapping(s.port_mapping[0]);
-			s.port_mapping[0] = m_natpmp->add_mapping(natpmp::tcp
+			if (s.tcp_port_mapping[0] != -1) m_natpmp->delete_mapping(s.tcp_port_mapping[0]);
+			s.tcp_port_mapping[0] = m_natpmp->add_mapping(natpmp::tcp
 				, s.local_endpoint.port(), s.local_endpoint.port());
 		}
 		if ((mask & 2) && m_upnp)
 		{
-			if (s.port_mapping[1] != -1) m_upnp->delete_mapping(s.port_mapping[1]);
-			s.port_mapping[1] = m_upnp->add_mapping(upnp::tcp
+			if (s.tcp_port_mapping[1] != -1) m_upnp->delete_mapping(s.tcp_port_mapping[1]);
+			s.tcp_port_mapping[1] = m_upnp->add_mapping(upnp::tcp
 				, s.local_endpoint.port(), s.local_endpoint.port());
 		}
 	}
@@ -5190,13 +5190,21 @@ retry:
 #endif
 	}
 
+	namespace {
+		bool find_port_mapping(int transport, int mapping, listen_socket_t const& ls)
+		{
+			return ls.tcp_port_mapping[transport] == mapping;
+		}
+	}
+
+	// transport is 0 for NAT-PMP and 1 for UPnP
 	void session_impl::on_port_mapping(int mapping, address const& ip, int port
 		, error_code const& ec, int map_transport)
 	{
 		TORRENT_ASSERT(is_single_thread());
 
 		TORRENT_ASSERT(map_transport >= 0 && map_transport <= 1);
-
+/*
 		if (mapping == m_udp_mapping[map_transport] && port != 0)
 		{
 			m_external_udp_port = port;
@@ -5205,10 +5213,24 @@ retry:
 					, map_transport);
 			return;
 		}
+*/
+		if (ec)
+		{
+			if (m_alerts.should_post<portmap_error_alert>())
+				m_alerts.emplace_alert<portmap_error_alert>(mapping
+					, map_transport, ec);
+		}
 
-#error search through m_listen_sockets for this mapping
+		// look throught our listen sockets to see if this mapping is for one of
+		// them (it could also be a user mapping)
 
-		if (mapping == m_tcp_mapping[map_transport] && port != 0)
+		// TODO: 4 this just finds TCP mappings. How do we distinguish TCP from
+		// UDP?
+		std::list<listen_socket_t>::iterator ls
+			= std::find_if(m_listen_sockets.begin(), m_listen_sockets.end()
+			, boost::bind(find_port_mapping, map_transport, mapping, _1));
+
+		if (ls != m_listen_sockets.end())
 		{
 			if (ip != address())
 			{
@@ -5217,23 +5239,16 @@ retry:
 				set_external_address(ip, source_router, address());
 			}
 
-			if (!m_listen_sockets.empty()) {
-				m_listen_sockets.front().external_address = ip;
-				m_listen_sockets.front().external_port = port;
-			}
+			ls->external_address = ip;
+			ls->external_port = port;
+
 			if (m_alerts.should_post<portmap_alert>())
 				m_alerts.emplace_alert<portmap_alert>(mapping, port
 					, map_transport);
 			return;
 		}
 
-		if (ec)
-		{
-			if (m_alerts.should_post<portmap_error_alert>())
-				m_alerts.emplace_alert<portmap_error_alert>(mapping
-					, map_transport, ec);
-		}
-		else
+		if (!ec)
 		{
 			if (m_alerts.should_post<portmap_alert>())
 				m_alerts.emplace_alert<portmap_alert>(mapping, port
@@ -5635,6 +5650,7 @@ retry:
 
 #endif
 
+/*
 	void session_impl::maybe_update_udp_mapping(int nat, int local_port, int external_port)
 	{
 		int local, external, protocol;
@@ -5671,6 +5687,7 @@ retry:
 			return;
 		}
 	}
+*/
 
 #if !defined(TORRENT_DISABLE_ENCRYPTION) && !defined(TORRENT_DISABLE_EXTENSIONS)
 	void session_impl::add_obfuscated_hash(sha1_hash const& obfuscated
@@ -6391,6 +6408,9 @@ retry:
 			remap_ports(1, *i);
 		}
 
+		// TODO: 4 once UDP sockets are part of m_listen_sockets, this is not
+		// necesarry!
+/*
 		if (m_udp_socket.is_open())
 		{
 			error_code ec;
@@ -6413,6 +6433,7 @@ retry:
 			}
 		}
 #endif
+*/
 		return m_natpmp.get();
 	}
 
@@ -6432,8 +6453,6 @@ retry:
 			, m_settings.get_bool(settings_pack::upnp_ignore_nonrouters));
 		m_upnp->start();
 
-		int ssl_port = ssl_listen_port();
-
 		m_upnp->discover_device();
 
 		for (std::list<listen_socket_t>::iterator i = m_listen_sockets.begin()
@@ -6442,6 +6461,9 @@ retry:
 			remap_ports(1, *i);
 		}
 
+		// TODO: 4 once the UDP sockets are part of m_listen_sockets this won't be
+		// necessary!
+/*
 		if (m_udp_socket.is_open())
 		{
 			error_code ec;
@@ -6464,6 +6486,7 @@ retry:
 			}
 		}
 #endif
+*/
 		return m_upnp.get();
 	}
 
@@ -6496,15 +6519,11 @@ retry:
 		if (!m_natpmp) return;
 
 		m_natpmp->close();
-		m_udp_mapping[0] = -1;
-#ifdef TORRENT_USE_OPENSSL
-		m_ssl_udp_mapping[0] = -1;
-#endif
-
 		for (std::list<listen_socket_t>::iterator i = m_listen_sockets.begin()
 			, end(m_listen_sockets.end()); i != end; ++i)
 		{
-			i->port_mapping[0] = -1;
+			i->tcp_port_mapping[0] = -1;
+			i->udp_port_mapping[0] = -1;
 		}
 		m_natpmp.reset();
 	}
@@ -6514,14 +6533,11 @@ retry:
 		if (!m_upnp) return;
 
 		m_upnp->close();
-		m_udp_mapping[1] = -1;
-#ifdef TORRENT_USE_OPENSSL
-		m_ssl_udp_mapping[1] = -1;
-#endif
 		for (std::list<listen_socket_t>::iterator i = m_listen_sockets.begin()
 			, end(m_listen_sockets.end()); i != end; ++i)
 		{
-			i->port_mapping[1] = -1;
+			i->tcp_port_mapping[1] = -1;
+			i->udp_port_mapping[1] = -1;
 		}
 		m_upnp.reset();
 	}
