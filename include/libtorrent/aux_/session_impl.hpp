@@ -247,12 +247,6 @@ namespace libtorrent
 			// need the initial push to connect peers
 			void prioritize_connections(boost::weak_ptr<torrent> t) TORRENT_OVERRIDE;
 
-			// if we are listening on an IPv6 interface
-			// this will return one of the IPv6 addresses on this
-			// machine, otherwise just an empty endpoint
-			tcp::endpoint get_ipv6_interface() const TORRENT_OVERRIDE;
-			tcp::endpoint get_ipv4_interface() const TORRENT_OVERRIDE;
-
 			void async_accept(boost::shared_ptr<tcp::acceptor> const& listener, bool ssl);
 			void on_accept_connection(boost::shared_ptr<socket_type> const& s
 				, boost::weak_ptr<tcp::acceptor> listener, error_code const& e, bool ssl);
