@@ -75,53 +75,16 @@ namespace libtorrent
 		// data for the torrent. For more information, see the ``storage`` field.
 		add_torrent_params(storage_constructor_type sc = default_storage_constructor)
 			: version(LIBTORRENT_VERSION_NUM)
-#ifndef TORRENT_NO_DEPRECATE
-			, tracker_url(0)
-#endif
 			, storage_mode(storage_mode_sparse)
 			, storage(sc)
 			, userdata(0)
-#ifndef TORRENT_NO_DEPRECATE
-			, flags(flag_ignore_flags | default_flags)
-#else
 			, flags(default_flags)
-#endif
 			, max_uploads(-1)
 			, max_connections(-1)
 			, upload_limit(-1)
 			, download_limit(-1)
-#ifndef TORRENT_NO_DEPRECATE
-			, seed_mode(false)
-			, override_resume_data(false)
-			, upload_mode(false)
-			, share_mode(false)
-			, apply_ip_filter(true)
-			, paused(true)
-			, auto_managed(true)
-			, duplicate_is_error(false)
-			, merge_resume_trackers(false)
-#endif
 		{
 		}
-
-#ifndef TORRENT_NO_DEPRECATE
-		void update_flags() const
-		{
-			if (flags != (flag_ignore_flags | default_flags)) return;
-
-			boost::uint64_t& f = const_cast<boost::uint64_t&>(flags);
-			f = flag_update_subscribe;
-			if (seed_mode) f |= flag_seed_mode;
-			if (override_resume_data) f |= flag_override_resume_data;
-			if (upload_mode) f |= flag_upload_mode;
-			if (share_mode) f |= flag_share_mode;
-			if (apply_ip_filter) f |= flag_apply_ip_filter;
-			if (paused) f |= flag_paused;
-			if (auto_managed) f |= flag_auto_managed;
-			if (duplicate_is_error) f |= flag_duplicate_is_error;
-			if (merge_resume_trackers) f |= flag_merge_resume_trackers;
-		}
-#endif
 
 		// values for the ``flags`` field
 		enum flags_t
@@ -247,10 +210,12 @@ namespace libtorrent
 			// the torrent handle immediately after adding it.
 			flag_sequential_download = 0x800,
 
+#ifndef TORRENT_NO_DEPRECATE
 			// if this flag is set, the save path from the resume data file, if
 			// present, is honored. This defaults to not being set, in which
 			// case the save_path specified in add_torrent_params is always used.
 			flag_use_resume_save_path = 0x1000,
+#endif
 
 			// indicates that this torrent should never be unloaded from RAM, even
 			// if unloading torrents are allowed in general. Setting this makes
@@ -273,11 +238,7 @@ namespace libtorrent
 			flag_stop_when_ready = 0x4000,
 
 			// internal
-			default_flags = flag_pinned | flag_update_subscribe | flag_auto_managed | flag_paused | flag_apply_ip_filter
-
-#ifndef TORRENT_NO_DEPRECATE
-			, flag_ignore_flags = 0x80000000
-#endif
+			default_flags = flag_merge_resume_http_seeds | flag_merge_resume_trackers | flag_pinned | flag_update_subscribe | flag_auto_managed | flag_paused | flag_apply_ip_filter
 		};
 
 		// filled in by the constructor and should be left untouched. It is used
@@ -287,12 +248,16 @@ namespace libtorrent
 		// info_hash is set, this is required to be initiazlied.
 		boost::shared_ptr<torrent_info> ti;
 
-#ifndef TORRENT_NO_DEPRECATE
-		char const* tracker_url;
-#endif
 		// If the torrent doesn't have a tracker, but relies on the DHT to find
 		// peers, the ``trackers`` can specify tracker URLs for the torrent.
 		std::vector<std::string> trackers;
+
+		// the tiers the URLs in ``trackers`` belong to. Trackers belonging to
+		// different tiers may be treated differently, as defined by the multi
+		// tracker extension. This is optional, if not specified trackers are
+		// assumed to be part of tier 0
+#error support this in torrent constructor
+		std::vector<int> tracker_tiers;
 
 		// url seeds to be added to the torrent (`BEP 17`_).
 		std::vector<std::string> url_seeds;
@@ -302,10 +267,7 @@ namespace libtorrent
 		std::vector<std::pair<std::string, int> > dht_nodes;
 		std::string name;
 
-		// the path where the torrent is or will be stored. Note that this may
-		// also be stored in resume data. If you want the save path saved in
-		// the resume data to be used, you need to set the
-		// flag_use_resume_save_path flag.
+		// the path where the torrent is or will be stored.
 		//
 		// .. note::
 		// 	On windows this path (and other paths) are interpreted as UNC
@@ -406,18 +368,17 @@ namespace libtorrent
 		int upload_limit;
 		int download_limit;
 
-#ifndef TORRENT_NO_DEPRECATE
-		bool seed_mode;
-		bool override_resume_data;
-		bool upload_mode;
-		bool share_mode;
-		bool apply_ip_filter;
-		bool paused;
-		bool auto_managed;
-		bool duplicate_is_error;
-		bool merge_resume_trackers;
-#endif
+#error update torrent.cpp to take all these into account
+		// the total number of bytes uploaded and downloaded by this torrent so
+		// far.
+		boost::int64_t total_uploaded;
+		boost::int64_t total_downloaded;
 
+		// the numeber of seconds this torrent has spent in started, finished and
+		// seeding state so far, respectively.
+		int m_active_time;
+		int finished_time;
+		int seeding_time;
 	};
 }
 

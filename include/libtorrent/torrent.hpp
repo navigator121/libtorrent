@@ -987,7 +987,6 @@ namespace libtorrent
 		torrent_handle get_handle();
 
 		void write_resume_data(entry& rd) const;
-		void read_resume_data(bdecode_node const& rd);
 
 		void seen_complete() { m_last_seen_complete = time(0); }
 		int time_since_complete() const { return int(time(0) - m_last_seen_complete); }
@@ -1304,9 +1303,6 @@ namespace libtorrent
 		// set if there's an error on this torrent
 		error_code m_error;
 
-		// used if there is any resume data
-		boost::scoped_ptr<resume_data_t> m_resume_data;
-
 		// if the torrent is started without metadata, it may
 		// still be given a name until the metadata is received
 		// once the metadata is received this field will no
@@ -1492,9 +1488,7 @@ namespace libtorrent
 		// torrent.
 		bool m_super_seeding:1;
 
-		// this is set when we don't want to load seed_mode,
-		// paused or auto_managed from the resume data
-		const bool m_override_resume_data:1;
+#error a 1 bit hole here
 
 		// this is true while there is a country
 		// resolution in progress. To avoid flodding
@@ -1689,14 +1683,7 @@ namespace libtorrent
 		// quarantine
 		bool m_pending_active_change:1;
 
-		// if this is set, accept the save path saved in the resume data, if
-		// present
-		bool m_use_resume_save_path:1;
-
-		// if set to true, add web seed URLs loaded from resume
-		// data into this torrent instead of replacing the ones from the .torrent
-		// file
-		bool m_merge_resume_http_seeds:1;
+#error 2 missing bit here
 
 		// if this is set, whenever transitioning into a downloading/seeding state
 		// from a non-downloading/seeding state, the torrent is paused.

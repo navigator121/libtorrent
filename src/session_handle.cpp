@@ -152,7 +152,7 @@ namespace libtorrent
 		return TORRENT_SYNC_CALL_RET(std::vector<torrent_handle>, get_torrents);
 	}
 
-	#ifndef BOOST_NO_EXCEPTIONS
+#ifndef BOOST_NO_EXCEPTIONS
 	torrent_handle session_handle::add_torrent(add_torrent_params const& params)
 	{
 		error_code ec;
@@ -171,6 +171,11 @@ namespace libtorrent
 	void session_handle::async_add_torrent(add_torrent_params const& params)
 	{
 		add_torrent_params* p = new add_torrent_params(params);
+#error all add_torrent() and async_add_torrent() function need to pass the \
+		add_torrent_params through a function that parses the resume vector and \
+		blends the results into the params object (unless deprecated functions \
+		are disabled)
+
 #ifndef TORRENT_NO_DEPRECATE
 		if (params.tracker_url)
 		{
